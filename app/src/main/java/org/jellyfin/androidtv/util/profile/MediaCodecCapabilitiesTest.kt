@@ -9,14 +9,14 @@ import timber.log.Timber
 class MediaCodecCapabilitiesTest {
 	private val mediaCodecList by lazy { MediaCodecList(MediaCodecList.REGULAR_CODECS) }
 
-	fun supportsAV1(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+	fun supportsAv1(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
 		hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_AV1)
 
-	fun supportsAV1Main10(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+	fun supportsAv1Main10(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
 		hasDecoder(
 			MediaFormat.MIMETYPE_VIDEO_AV1,
 			CodecProfileLevel.AV1ProfileMain10,
-			CodecProfileLevel.AV1Level5
+			CodecProfileLevel.AV1Level4
 		)
 
 	fun supportsHevc(): Boolean = hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_HEVC)
@@ -24,10 +24,10 @@ class MediaCodecCapabilitiesTest {
 	fun supportsHevcMain10(): Boolean = hasDecoder(
 		MediaFormat.MIMETYPE_VIDEO_HEVC,
 		CodecProfileLevel.HEVCProfileMain10,
-		CodecProfileLevel.HEVCMainTierLevel5
+		CodecProfileLevel.HEVCMainTierLevel4
 	)
 
-	fun supportsAVCHigh10(): Boolean = hasDecoder(
+	fun supportsAvcHigh10(): Boolean = hasDecoder(
 		MediaFormat.MIMETYPE_VIDEO_AVC,
 		CodecProfileLevel.AVCProfileHigh10,
 		CodecProfileLevel.AVCLevel4

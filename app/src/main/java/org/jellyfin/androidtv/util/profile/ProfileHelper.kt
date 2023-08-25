@@ -16,18 +16,19 @@ import timber.log.Timber
 object ProfileHelper {
 	// H264 codec levels https://en.wikipedia.org/wiki/Advanced_Video_Coding#Levels
 	private const val H264_LEVEL_4_1 = "41"
+	private const val H264_LEVEL_4_2 = "42"
 	private const val H264_LEVEL_5_1 = "51"
 	private const val H264_LEVEL_5_2 = "52"
 
 	private val MediaTest by lazy { MediaCodecCapabilitiesTest() }
 
-	val deviceAV1CodecProfile by lazy {
+	val deviceAv1CodecProfile by lazy {
 		CodecProfile().apply {
 			type = CodecType.Video
 			codec = Codec.Video.AV1
 
 			conditions = when {
-				!MediaTest.supportsAV1() -> {
+				!MediaTest.supportsAv1() -> {
 					// The following condition is a method to exclude all AV1
 					Timber.i("*** Does NOT support AV1")
 					arrayOf(
@@ -38,7 +39,7 @@ object ProfileHelper {
 						)
 					)
 				}
-				!MediaTest.supportsAV1Main10() -> {
+				!MediaTest.supportsAv1Main10() -> {
 					Timber.i("*** Does NOT support AV1 10 bit")
 					arrayOf(
 						ProfileCondition(
@@ -110,6 +111,9 @@ object ProfileHelper {
 			ProfileConditionType.LessThanEqual,
 			ProfileConditionValue.VideoLevel,
 			when {
+				// https://support.google.com/chromecast/answer/3046409
+				DeviceUtils.isChromecastWithGoogleTv4k -> H264_LEVEL_5_2
+				DeviceUtils.isChromecastWithGoogleTvHd -> H264_LEVEL_4_2
 				// https://developer.amazon.com/docs/fire-tv/device-specifications.html
 				DeviceUtils.isFireTvStick4k -> H264_LEVEL_5_2
 				DeviceUtils.isFireTv -> H264_LEVEL_4_1
@@ -123,12 +127,12 @@ object ProfileHelper {
 		ProfileCondition(
 			ProfileConditionType.EqualsAny,
 			ProfileConditionValue.VideoProfile,
-			listOfNotNull(
+			listOf(
+				if (MediaTest.supportsAvcHigh10()) "high 10" else null,
 				"high",
 				"main",
 				"baseline",
 				"constrained baseline",
-				if (MediaTest.supportsAVCHigh10()) "high 10" else null
 			).joinToString("|")
 		)
 	}
@@ -151,12 +155,15 @@ object ProfileHelper {
 	val photoDirectPlayProfile by lazy {
 		DirectPlayProfile().apply {
 			type = DlnaProfileType.Photo
-			container = arrayOf(
+			container = listOfNotNull(
+				"png",
 				"jpg",
 				"jpeg",
-				"png",
 				"gif",
-				"webp"
+				"webp",
+				if (MediaTest.supportsHevc()) "heic" else null,
+				if (MediaTest.supportsHevc()) "heif" else null,
+				if (MediaTest.supportsAv1()) "avif" else null
 			).joinToString(",")
 		}
 	}

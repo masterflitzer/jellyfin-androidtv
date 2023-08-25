@@ -12,7 +12,9 @@ class DeviceUtilsTests : FunSpec({
 	}
 
 	test("DeviceUtils methods support unknown as model") {
-		DeviceUtils.isChromecastWithGoogleTV shouldBe false
+		DeviceUtils.isChromecastWithGoogleTv shouldBe false
+		DeviceUtils.isChromecastWithGoogleTv4k shouldBe false
+		DeviceUtils.isChromecastWithGoogleTvHd shouldBe false
 		DeviceUtils.isFireTv shouldBe false
 		DeviceUtils.isFireTvStickGen1 shouldBe false
 		DeviceUtils.isFireTvStick4k shouldBe false
@@ -27,9 +29,25 @@ class DeviceUtilsTests : FunSpec({
 		unmockkObject(DeviceUtils)
 	}
 
-	test("DeviceUtils.isChromecastWithGoogleTV() works correctly") {
+	test("DeviceUtils.isChromecastWithGoogleTv() works correctly") {
+		arrayOf("Chromecast", "Chromecast_foo", "Chromecast ", "Chromecast2").forEach { input ->
+			withBuildModel(input) {
+				DeviceUtils.isChromecastWithGoogleTv shouldBe true
+			}
+		}
+	}
+
+	test("DeviceUtils.isChromecastWithGoogleTv4k() works correctly") {
 		withBuildModel("Chromecast") {
-			DeviceUtils.isChromecastWithGoogleTV shouldBe true
+			DeviceUtils.isChromecastWithGoogleTv4k shouldBe true
+			DeviceUtils.isChromecastWithGoogleTvHd shouldBe false
+		}
+	}
+
+	test("DeviceUtils.isChromecastWithGoogleTvHd() works correctly") {
+		withBuildModel("Chromecast HD") {
+			DeviceUtils.isChromecastWithGoogleTv4k shouldBe false
+			DeviceUtils.isChromecastWithGoogleTvHd shouldBe true
 		}
 	}
 
@@ -66,9 +84,14 @@ class DeviceUtilsTests : FunSpec({
 	}
 
 	test("DeviceUtils.has4kVideoSupport() works correctly") {
-		arrayOf("AFTM", "AFTT", "AFTSSS", "AFTSS", "AFTB", "AFTS").forEach { input ->
+		arrayOf("Chromecast HD", "AFTM", "AFTT", "AFTSSS", "AFTSS", "AFTB", "AFTS").forEach { input ->
 			withBuildModel(input) {
 				DeviceUtils.has4kVideoSupport() shouldBe false
+			}
+		}
+		arrayOf("Chromecast", "AFTMM", "AFTKA").forEach { input ->
+			withBuildModel(input) {
+				DeviceUtils.has4kVideoSupport() shouldBe true
 			}
 		}
 	}
