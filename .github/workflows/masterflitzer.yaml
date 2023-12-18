@@ -1,0 +1,101 @@
+name: masterflitzer
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+jobs:
+  deploy:
+    if: github.repository_owner == 'masterflitzer'
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE: app.keystore
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Configure PATH
+        run: |
+          ANDROID_SDK_BUILD_TOOLS_VERSION="$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort -n | tail -1)"
+          echo "${ANDROID_HOME}/build-tools/${ANDROID_SDK_BUILD_TOOLS_VERSION}" >> $GITHUB_PATH
+      - name: Configure JELLYFIN_VERSION
+        run: echo "JELLYFIN_VERSION=$(test "${GITHUB_REF_TYPE}" = "tag" && echo "${GITHUB_REF_NAME}" || echo "0.0.0-${GITHUB_REF_NAME}")" >> $GITHUB_ENV
+      - name: Build APK
+        run: ./gradlew assembleRelease
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xms256m -Xmx6144m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError'"
+      - name: Configure Keystore
+        run: |
+          # keytool -genkeypair -keyalg rsa -keysize 4096 -validity 9125 -keystore "${KEYSTORE}" -alias REDACTED
+          # openssl base64 -in "${KEYSTORE}" -out "${KEYSTORE}.base64"
+          echo "${KEYSTORE_BASE64}" > "${KEYSTORE}.base64"
+          openssl base64 -d -in "${KEYSTORE}.base64" -out "${KEYSTORE}"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      - name: Configure APK Paths
+        run: |
+          APK="$(find app/build/outputs/apk/release -type f -iname '*-release-unsigned.apk' -print -quit)"
+          echo "APK_UNSIGNED=${APK}" >> $GITHUB_ENV
+          echo "APK_ALIGNED=${APK//unsigned/aligned}" >> $GITHUB_ENV
+          echo "APK_SIGNED=${APK//unsigned/signed}" >> $GITHUB_ENV
+          echo "APK_FINAL=${APK//-release-unsigned/}" >> $GITHUB_ENV
+      - name: Align APK
+        run: |
+          zipalign -p -f 4 "${APK_UNSIGNED}" "${APK_ALIGNED}"
+          zipalign -c 4 "${APK_ALIGNED}"
+      - name: Sign APK
+        run: |
+          apksigner sign --in "${APK_ALIGNED}" --out "${APK_SIGNED}" --ks "${KEYSTORE}" --ks-key-alias "${KEYSTORE_ALIAS}" --ks-pass "env:KEYSTORE_PASS" --key-pass "env:KEYSTORE_PASS"
+          apksigner verify -v --v4-signature-file "${APK_SIGNED}.idsig" "${APK_SIGNED}"
+        env:
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+      - name: Release APK
+        if: github.ref_type == 'tag'
+        run: |
+          CODE="$(curl -Lso /tmp/curl -w "%{response_code}" -X GET -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${GITHUB_API_VER}" "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")"
+
+          if test "${CODE}" -eq 200
+          then
+            RELEASE_ID="$(cat /tmp/curl | jq -r '.id')"
+            CODE="$(curl -Lso /tmp/curl -w "%{response_code}" -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${GITHUB_API_VER}" "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}")"
+
+            if test "${CODE}" -ne 204
+            then
+              echo "::error::Failed to delete an existing release for tag ${TAG} (Status Code: ${CODE})"
+              exit 1
+            fi
+          fi
+
+          CODE="$(curl -Lso /tmp/curl -w "%{response_code}" -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${GITHUB_API_VER}" "https://api.github.com/repos/${REPO}/releases" -d "{ \"tag_name\": \"${TAG}\", \"name\": \"${TAG}\", \"body\": \"Release: ${TAG}\", \"draft\": false, \"prerelease\": false, \"generate_release_notes\": false }")"
+
+          if test "${CODE}" -ne 201
+          then
+            echo "::error::Failed to create a new release for tag ${TAG} (Status Code: ${CODE})"
+            exit 1
+          fi
+
+          RELEASE_ID="$(cat /tmp/curl | jq -r '.id')"
+          ASSET_NAME="$(basename "${APK_FINAL}")"
+
+          CODE="$(curl -Lso /tmp/curl -w "%{response_code}" -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${GITHUB_API_VER}" -H "Content-Type: application/octet-stream" "https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}" --data-binary "@${APK_SIGNED}")"
+
+          if test "${CODE}" -ne 201
+          then
+            echo "::error::Failed to upload an asset to release with tag ${TAG} (Status Code: ${CODE})"
+            exit 1
+          fi
+        env:
+          GITHUB_API_VER: "2022-11-28"
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
